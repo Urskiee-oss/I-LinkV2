@@ -17,6 +17,7 @@ export class SupabaseService implements OnModuleInit {
   private readonly logger = new Logger(SupabaseService.name);
   private adminClient!: SupabaseClient;
   private authClient!: SupabaseClient;
+  private cloudAuthClient: SupabaseClient | null = null;
   private localStore!: LocalStore;
   readonly bucket: string;
   readonly configured: boolean;
@@ -32,22 +33,30 @@ export class SupabaseService implements OnModuleInit {
   }
 
   onModuleInit() {
+    const url = this.config.get<string>('SUPABASE_URL') ?? '';
+    const anonKey = this.config.get<string>('SUPABASE_ANON_KEY') ?? '';
+    const opts = { auth: { persistSession: false, autoRefreshToken: false } };
+    if (/^https?:\/\//.test(url) && !url.includes('YOUR-PROJECT') && anonKey.length > 20) {
+      this.cloudAuthClient = createClient(url, anonKey, opts);
+    }
+
     if (this.isCloud) {
-      const url = this.config.get<string>('SUPABASE_URL')!;
       const serviceKey = this.config.get<string>('SUPABASE_SERVICE_ROLE_KEY')!;
-      const anonKey = this.config.get<string>('SUPABASE_ANON_KEY') ?? serviceKey;
-      const opts = { auth: { persistSession: false, autoRefreshToken: false } };
       this.adminClient = createClient(url, serviceKey, opts);
-      this.authClient = createClient(url, anonKey, opts);
+      this.authClient = this.cloudAuthClient ?? createClient(url, serviceKey, opts);
       this.logger.log(`Connected to Supabase project: ${url}`);
     } else {
       this.localStore = new LocalStore();
       this.adminClient = this.localStore as unknown as SupabaseClient;
       this.authClient = this.localStore as unknown as SupabaseClient;
       this.logger.log(
-        'Running with built-in Local Supabase Compatibility Store (api/.local-db.json). Set SUPABASE_URL & SUPABASE_SERVICE_ROLE_KEY in api/.env to switch to Supabase Cloud.',
+        'Running with built-in Local Supabase Compatibility Store (api/.local-db.json) + Cloud Auth token verification. Add SUPABASE_SERVICE_ROLE_KEY in api/.env for direct Cloud admin writes.',
       );
     }
+  }
+
+  get cloudAuth(): SupabaseClient | null {
+    return this.cloudAuthClient;
   }
 
   get admin(): SupabaseClient {

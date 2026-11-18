@@ -71,7 +71,14 @@ export class AuthService {
   async resolveToken(token: string): Promise<AuthUser> {
     this.ensureConfigured();
     if (!token) throw new UnauthorizedException('Missing access token');
-    const { data, error } = await this.supabase.auth.auth.getUser(token);
+    let { data, error } = await this.supabase.auth.auth.getUser(token);
+    if ((error || !data?.user) && this.supabase.cloudAuth) {
+      const cloudRes = await this.supabase.cloudAuth.auth.getUser(token);
+      if (cloudRes.data?.user) {
+        data = cloudRes.data;
+        error = null;
+      }
+    }
     if (error || !data?.user) {
       throw new UnauthorizedException('Invalid or expired access token');
     }
