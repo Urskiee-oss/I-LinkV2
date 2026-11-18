@@ -8,6 +8,7 @@
     "start": "node dist/main",
     "start:dev": "nest start --watch",
     "seed": "ts-node -r tsconfig-paths/register scripts/seed.ts",
+    "verify:supabase": "ts-node scripts/verify-supabase.ts",
     "simulate:flood": "ts-node scripts/flood-simulator.ts",
     "test": "node --test dist/**/*.spec.js",
     "lint": "tsc --noEmit -p tsconfig.json"
