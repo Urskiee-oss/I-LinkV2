@@ -1,4 +1,5 @@
 import { getAccessToken } from './supabase';
+import { supabaseDirectApi } from './supabase-direct';
 import type { ApiErrorBody } from './types';
 
 function resolveApiUrl(): string {
@@ -21,7 +22,14 @@ function resolveApiUrl(): string {
   return configured;
 }
 
-export const API_URL = resolveApiUrl();
+function isRemoteProductionWithoutConfiguredApi(): boolean {
+  if (typeof window === 'undefined') return false;
+  const host = window.location.hostname;
+  const isLocalBrowser = host === 'localhost' || host === '127.0.0.1' || /^192\.168\./.test(host);
+  const configured = process.env.NEXT_PUBLIC_API_URL || '';
+  const apiPointsToLocal = !configured || /localhost|127\.0\.0\.1/.test(configured);
+  return !isLocalBrowser && apiPointsToLocal;
+}
 
 export function apiOrigin(): string {
   try {
@@ -66,6 +74,13 @@ export function buildQuery(query?: Query): string {
 
 export async function api<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, query, auth = true, signal } = opts;
+  if (isRemoteProductionWithoutConfiguredApi()) {
+    try {
+      return await supabaseDirectApi<T>(path, { method, body, query });
+    } catch (directErr) {
+      throw new ApiError(400, (directErr as Error)?.message || 'Request failed');
+    }
+  }
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (auth) {
     const token = await getAccessToken();
@@ -84,7 +99,11 @@ export async function api<T>(path: string, opts: RequestOptions = {}): Promise<T
     res = await fetch(`${resolveApiUrl()}${path}${buildQuery(query)}`, { method, headers, body: payload, signal });
   } catch (e) {
     if ((e as Error)?.name === 'AbortError') throw e;
-    throw new ApiError(0, 'Cannot reach the I-Link server. Check your connection or try again shortly.');
+    try {
+      return await supabaseDirectApi<T>(path, { method, body, query });
+    } catch (directErr) {
+      throw new ApiError(400, (directErr as Error)?.message || 'Request failed');
+    }
   }
 
   const text = await res.text();

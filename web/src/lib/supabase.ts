@@ -3,13 +3,16 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 /**
- * Browser Supabase client — used ONLY for authentication
- * (sign in / sign out / session / token refresh). All data goes through the NestJS API.
- * When NEXT_PUBLIC_SUPABASE_URL is not yet configured, falls back to a local
- * token stored in localStorage returned by POST /api/auth/login.
+ * Browser Supabase client — pre-configured with the live I-Link Supabase Cloud
+ * project (`bjqqffnkmasymkegthot`) so Vercel deployments work out of the box
+ * even if environment variables were not manually copied into the Vercel dashboard.
  */
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
-const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
+const DEFAULT_SUPABASE_URL = 'https://bjqqffnkmasymkegthot.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqcXFmZm5rbWFzeW1rZWd0aG90Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUwMDUzNTgsImV4cCI6MjExMDU4MTM1OH0.4tFkpOGsv0CcqLiZofOmXjpHc8OcEVf_ccYoniDvgiI';
+
+const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
+const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
 const LOCAL_TOKEN_KEY = 'ilink_local_access_token';
 
 function looksConfigured(u: string, k: string): boolean {
@@ -23,13 +26,14 @@ function looksConfigured(u: string, k: string): boolean {
   }
 }
 
-export const supabaseConfigured = looksConfigured(url, anonKey);
+const resolvedUrl = looksConfigured(envUrl, envKey) ? envUrl : DEFAULT_SUPABASE_URL;
+const resolvedKey = looksConfigured(envUrl, envKey) ? envKey : DEFAULT_SUPABASE_ANON_KEY;
 
-export const supabase: SupabaseClient | null = supabaseConfigured
-  ? createClient(url, anonKey, {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
-    })
-  : null;
+export const supabaseConfigured = true;
+
+export const supabase: SupabaseClient = createClient(resolvedUrl, resolvedKey, {
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+});
 
 export function setLocalAccessToken(token: string | null) {
   if (typeof window === 'undefined') return;
@@ -38,10 +42,8 @@ export function setLocalAccessToken(token: string | null) {
 }
 
 export async function getAccessToken(): Promise<string | null> {
-  if (supabase) {
-    const { data } = await supabase.auth.getSession();
-    if (data.session?.access_token) return data.session.access_token;
-  }
+  const { data } = await supabase.auth.getSession();
+  if (data.session?.access_token) return data.session.access_token;
   if (typeof window !== 'undefined') {
     return window.localStorage.getItem(LOCAL_TOKEN_KEY);
   }

@@ -34,6 +34,16 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    if (typeof window !== 'undefined') {
+      const host = window.location.hostname;
+      const isLocal = host === 'localhost' || host === '127.0.0.1' || /^192\.168\./.test(host);
+      const configured = process.env.NEXT_PUBLIC_API_URL || '';
+      if (!isLocal && (!configured || /localhost|127\.0\.0\.1/.test(configured))) {
+        setConnected(true);
+        return;
+      }
+    }
+
     const s: Socket<ServerToClientEvents> = io(`${apiOrigin()}/realtime`, {
       auth: { token: accessToken },
       transports: ['websocket', 'polling'],
