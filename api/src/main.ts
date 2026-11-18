@@ -11,13 +11,8 @@ async function bootstrap() {
   app.use(helmet());
   app.setGlobalPrefix('api');
 
-  const origins = (process.env.CORS_ORIGINS || 'http://localhost:3000')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-
   app.enableCors({
-    origin: origins,
+    origin: true,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'x-device-key'],

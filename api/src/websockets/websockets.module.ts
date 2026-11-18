@@ -12,7 +12,7 @@ import { AppRole, AuthUser, isStaff } from '../common/types';
 @WebSocketGateway({
   namespace: '/realtime',
   cors: {
-    origin: (process.env.CORS_ORIGINS || 'http://localhost:3000').split(',').map((s) => s.trim()),
+    origin: true,
     credentials: true,
   },
 })

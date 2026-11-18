@@ -1,11 +1,31 @@
 import { getAccessToken } from './supabase';
 import type { ApiErrorBody } from './types';
 
-export const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api').replace(/\/+$/, '');
+function resolveApiUrl(): string {
+  const configured = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api').replace(/\/+$/, '');
+  if (typeof window !== 'undefined') {
+    try {
+      const u = new URL(configured);
+      if (
+        (u.hostname === 'localhost' || u.hostname === '127.0.0.1') &&
+        window.location.hostname &&
+        window.location.hostname !== u.hostname
+      ) {
+        u.hostname = window.location.hostname;
+        return u.toString().replace(/\/+$/, '');
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return configured;
+}
+
+export const API_URL = resolveApiUrl();
 
 export function apiOrigin(): string {
   try {
-    return new URL(API_URL).origin;
+    return new URL(resolveApiUrl()).origin;
   } catch {
     return 'http://localhost:4000';
   }
@@ -61,7 +81,7 @@ export async function api<T>(path: string, opts: RequestOptions = {}): Promise<T
 
   let res: Response;
   try {
-    res = await fetch(`${API_URL}${path}${buildQuery(query)}`, { method, headers, body: payload, signal });
+    res = await fetch(`${resolveApiUrl()}${path}${buildQuery(query)}`, { method, headers, body: payload, signal });
   } catch (e) {
     if ((e as Error)?.name === 'AbortError') throw e;
     throw new ApiError(0, 'Cannot reach the I-Link server. Check your connection or try again shortly.');

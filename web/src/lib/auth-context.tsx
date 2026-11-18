@@ -108,14 +108,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(async (email: string, password: string): Promise<Me> => {
     if (supabase) {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error || !data.session) {
-        throw new Error(error?.message || 'Invalid email or password.');
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (!error && data.session) {
+          setSession(data.session);
+          const profile = await api<Me>('/auth/me');
+          setMe(profile);
+          return profile;
+        }
+      } catch {
+        // Fall through to NestJS /auth/login endpoint
       }
-      setSession(data.session);
-      const profile = await api<Me>('/auth/me');
-      setMe(profile);
-      return profile;
     }
 
     const res = await api<{ access_token: string; user: { id: string; email: string } }>(
