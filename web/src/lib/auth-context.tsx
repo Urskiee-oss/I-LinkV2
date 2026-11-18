@@ -2,7 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { supabase, supabaseConfigured } from './supabase';
+import { getAccessToken, setLocalAccessToken, supabase, supabaseConfigured } from './supabase';
 import { api } from './api';
 import type { AppRole, Me } from './types';
 
@@ -28,6 +28,23 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function makeSyntheticSession(accessToken: string, userId: string, email: string): Session {
+  return {
+    access_token: accessToken,
+    refresh_token: accessToken,
+    expires_in: 86400,
+    token_type: 'bearer',
+    user: {
+      id: userId,
+      email,
+      app_metadata: {},
+      user_metadata: {},
+      aud: 'authenticated',
+      created_at: new Date().toISOString(),
+    },
+  };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [me, setMe] = useState<Me | null>(null);
@@ -45,12 +62,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    let mounted = true;
     if (!supabase) {
-      setLoading(false);
-      return;
+      getAccessToken().then(async (token) => {
+        if (!mounted) return;
+        if (token) {
+          const profile = await refreshMe();
+          if (profile && mounted) {
+            setSession(makeSyntheticSession(token, profile.id, profile.email));
+          } else {
+            setLocalAccessToken(null);
+          }
+        }
+        if (mounted) setLoading(false);
+      });
+      return () => {
+        mounted = false;
+      };
     }
 
-    let mounted = true;
     supabase.auth.getSession().then(async ({ data }) => {
       if (!mounted) return;
       setSession(data.session);
@@ -76,13 +106,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [refreshMe]);
 
-  const login = useCallback(
-    async (email: string, password: string): Promise<Me> => {
-      if (!supabase) {
-        throw new Error(
-          'Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in web/.env.local.',
-        );
-      }
+  const login = useCallback(async (email: string, password: string): Promise<Me> => {
+    if (supabase) {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error || !data.session) {
         throw new Error(error?.message || 'Invalid email or password.');
@@ -91,9 +116,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const profile = await api<Me>('/auth/me');
       setMe(profile);
       return profile;
-    },
-    [],
-  );
+    }
+
+    const res = await api<{ access_token: string; user: { id: string; email: string } }>(
+      '/auth/login',
+      {
+        method: 'POST',
+        auth: false,
+        body: { email, password },
+      },
+    );
+    setLocalAccessToken(res.access_token);
+    setSession(makeSyntheticSession(res.access_token, res.user.id, res.user.email));
+    const profile = await api<Me>('/auth/me');
+    setMe(profile);
+    return profile;
+  }, []);
 
   const register = useCallback(
     async (input: RegisterInput): Promise<Me> => {
@@ -111,6 +149,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (supabase) {
       await supabase.auth.signOut();
     }
+    setLocalAccessToken(null);
     setSession(null);
     setMe(null);
   }, []);
@@ -129,7 +168,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         session,
         me,
         loading,
-        configured: supabaseConfigured,
+        configured: true || supabaseConfigured,
         login,
         register,
         logout,

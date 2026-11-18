@@ -46,6 +46,15 @@ export class RegisterDto {
   purok?: string;
 }
 
+export class LoginDto {
+  @IsEmail()
+  email!: string;
+
+  @IsString()
+  @MinLength(1)
+  password!: string;
+}
+
 @Injectable()
 export class AuthService {
   constructor(private readonly supabase: SupabaseService) {}
@@ -158,6 +167,28 @@ export class AuthService {
       profile,
     };
   }
+
+  async login(dto: LoginDto) {
+    if (this.supabase.local) {
+      const res = this.supabase.local.login(dto.email, dto.password);
+      if (!res) throw new UnauthorizedException('Invalid email or password');
+      return res;
+    }
+    const { data, error } = await this.supabase.auth.auth.signInWithPassword({
+      email: dto.email.trim(),
+      password: dto.password,
+    });
+    if (error || !data.session) {
+      throw new UnauthorizedException(error?.message || 'Invalid email or password');
+    }
+    return {
+      access_token: data.session.access_token,
+      user: {
+        id: data.user.id,
+        email: data.user.email,
+      },
+    };
+  }
 }
 
 @Injectable()
@@ -216,6 +247,12 @@ export class AuthController {
   @Post('register')
   register(@Body() dto: RegisterDto) {
     return this.auth.register(dto);
+  }
+
+  @Public()
+  @Post('login')
+  login(@Body() dto: LoginDto) {
+    return this.auth.login(dto);
   }
 
   @Get('me')
